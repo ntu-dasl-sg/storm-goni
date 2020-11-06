@@ -1,5 +1,4 @@
 # Downloading windspeed data from NOAA
-Investigating the effect of spatial correlation (e.g. clustered observations) on the tephra inversion model results.
 
 To create a damage model for this typhoon event, we need wind speed values for all municipalities of our study area. Here, we download windspeeds at 10 meter elevation from the [NOAA/NCEP Global Forecast System (GFS) Atmospheric Model](https://www.ncdc.noaa.gov/data-access/model-data/model-datasets/global-forcast-system-gfs) using the [rWind](https://cran.r-project.org/web/packages/rWind/index.html) package, and extract the average/ maximum wind speed value at the location of each municipality. In the end, we produce a CSV file listing all municipalities and the assigned windspeed in km/h.
 
