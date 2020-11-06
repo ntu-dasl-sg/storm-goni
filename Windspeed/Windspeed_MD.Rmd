@@ -1,0 +1,218 @@
+---
+title: "Downloading windspeed data from NOAA"
+author: "Maricar L. Rabonza"
+date: "11/5/2020"
+output: 
+    html_document:
+        toc: true
+        toc_float: true
+---
+
+```{r note, include=F, message=F, warning=F}
+# NOTES:
+    # 1. Place the .RProj file to where you want your home folder to be set.
+    # 2. This file needs PH_municipality.shp located in /Data
+    # 3. Output figures are located at /Figures/
+    # 4. Output CSV files in /Output_CSV/
+    # 5. Edit line 148 and 165 if you want to switch between maximum or average windspeeds for each municipality.
+
+```
+
+## Load windspeed data
+
+To create a damage model for this typhoon event, we need wind speed values for all municipalities of our study area. Here, we download windspeeds at 10 meter elevation from the [NOAA/NCEP Global Forecast System (GFS) Atmospheric Model](https://www.ncdc.noaa.gov/data-access/model-data/model-datasets/global-forcast-system-gfs) using the [rWind](https://cran.r-project.org/web/packages/rWind/index.html) package, and extract the average/ maximum wind speed value at the location of each municipality. In the end, we produce a CSV file listing all municipalities and the assigned windspeed in km/h.
+
+This code needs a shapefile `PH_municipality.shp` in the folder `/Data/`. This shapefile contains the polygons of all municipalities with associated attributes. 
+
+
+```{r setup, message=F, warning=F}
+# Set working libraries
+library(here) # sets location of .RProj as working directory
+library(knitr) # useful for many rmarkdown layout functions
+library(ggplot2) # the ultimate plotting package
+library(dplyr) # best for data wrangling
+library(rWind)  # help(rWind)
+library(raster)  
+library(rworldmap)  
+library(rworldxtra)
+library(mapproj)
+library(shape)
+library(sp)
+library(rgdal)
+library(rgeos)
+library(mapview)
+library(maptools)
+library(scico) # colour palettes based on the scientific colour-maps
+library(kableExtra) # table formatting for knitr
+```
+
+First, download windspeed for Philippines when Typhoon Goni made landfall at November 1, 2020, 00:00:00
+\ 
+
+```{r, message=F, warning=FALSE}
+wind_data <- wind.dl(2020,11,01, 0, 109.5, 134.0, 1.5, 26.0)
+wind_data <- wind_data[,c(-1,-4,-5, -6)]# delete columns we don't need: time, u&v wind, wind direction
+head(wind_data) %>% # show table
+  kbl(caption = "Wind velocity at 10m (2020-11-01 T 00:00:00Z)" ) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+The raw windspeed values are in m/s, so we convert it to km/h.
+
+```{r, message=F, warning=FALSE}
+wind_data$speed <- wind_data$speed * 3.6
+```
+
+\ 
+
+## Visualize wind speed data
+
+Now we make a map of the windspeed dataset.
+
+```{r, message=F, warning=F}
+
+# Download coastlines
+download.file("http://www.naturalearthdata.com/http//www.naturalearthdata.com/download/10m/physical/ne_10m_coastline.zip", 
+              destfile = 'coastlines.zip')
+unzip(zipfile = "coastlines.zip", exdir = 'ne-coastlines-10m') # unzip the file
+coastlines <- readOGR("ne-coastlines-10m/ne_10m_coastline.shp") # load the data 
+#coastlines_sim2 <- gSimplify(coastlines, tol = .1, topologyPreserve = TRUE) # simplify with low tolerance value
+coastlines_sim2 <- coastlines
+coastlines_sim2_df <- SpatialLinesDataFrame(coastlines_sim2,coastlines@data) # convert to spdf
+```
+
+
+```{r fig_windspeed, message=F, warning=F, fig.cap=".",  fig.align = "center", out.width ="80%"}
+# Plot wind speeds at 10 m elevation
+ggplot() +
+    geom_raster(data=wind_data,
+                aes(x = lon, y = lat, fill = speed)) +
+    scale_fill_scico(palette = 'batlow',
+                     na.value = "transparent",
+                     direction = 1,
+                     name = "Wind Speed (km/h)",
+                     limits = c(0,150),
+                     guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top")
+                     ) +
+    geom_path(data = coastlines_sim2_df, aes(x = long, y = lat, group = group), col="gray") +
+    xlim(c(115.5, 128.0)) +
+    ylim(c(4, 22.0)) +
+    coord_equal(expand = 0) +
+    theme(
+        legend.position = c(0.75, 0.9),
+        panel.background = element_rect(fill = "#EAF7FA"),
+        panel.border = element_rect(colour = "black", fill = "transparent"),
+        legend.background = element_rect(fill = "white")
+    )
+
+ggsave(file= "Figures/wind_at_10m_kmh_map.png", 
+      scale = 2.0,
+      width = 3, height = 4.5,
+      dpi = 300)
+
+```
+\ 
+
+## Extract wind speed value for each municipality
+
+Here, we convert the windspeed to a raster, and load the municipality shapefile. It is important that both files have the same map projection.
+
+```{r, message=F, warning=F}
+
+# Convert wind dataframe to raster
+wind_data <- wind_data[c("lon", "lat", "speed")] # rearrange columns
+wind_r <- rasterFromXYZ(wind_data)  # create raster; assumes first two columns as lon-lat and third as value
+
+# Read the polygon shapefile of the municipalities to a table
+muni_data <- sf::st_read(here("Data", "PH_municipality.shp"))
+muni <- as(muni_data, "Spatial") # make a spatial polygons data frame
+head(muni) %>% # show table
+  kbl(caption = "Municipality data") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+# Define projection for mapping
+WGS84 <- CRS("+proj=longlat +ellps=WGS84 +datum=WGS84") 
+crs(wind_r) <- WGS84 
+crs(muni) <- WGS84
+```
+
+The windspeed values from the raster can now be extracted and assigned to each municipality polygon.
+The `fun` argument controls what values of the raster pixels that fall in the polygon should be extracted. The function can be switched to `max` for example to get the maximum raster (windspeed) value that intersects the municipality polygon.
+
+```{r, message=F, warning=F}
+Wind_Speed <- extract(wind_r, # raster layer
+                      muni, # polygonsDF,
+                      # buffer = NA, #optional
+                      fun = mean, # what value to extract
+                      na.rm = F)
+```
+
+We can add a column to the original municipality data table containing the extracted wind speed values.
+
+```{r, message=F, warning=F}
+muni$Wind_Speed <- Wind_Speed
+
+head(muni) %>% # show table
+  kbl(caption = "Municipality data") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+This table, as a CSV file, can now be used as an input for the damage model. 
+
+```{r, message=F, warning=F}
+write.csv(muni,"Output_CSV/Municipalities_with_Windspeed_Mean.csv", row.names = F)
+# write.csv(muni,"Output_CSV/Municipalities_with_Windspeed_Max.csv", row.names = F) # enable if extract function used max values
+```
+
+\ 
+
+## Visualize wind speeds for each municipality
+
+Finally, we can visualize the extracted windspeeds for all the municipalities as a map
+
+```{r, message=F, warning=F}
+# add to data a new column termed "id" composed of the rownames of data
+muni@data$id <- rownames(muni@data)
+# create a data.frame from our spatial object
+muniPoints <- fortify(muni, region = "id")
+# merge the "fortified" data with the data from our spatial object
+muniDF <- merge(muniPoints, muni@data, by = "id")
+```
+
+
+```{r fig_muni, message=F, warning=F, fig.cap=".",  fig.align = "center", out.width ="80%"}
+ggplot(data = muniDF, aes(x=long, y=lat, group = group,
+                          fill = Wind_Speed)) +
+    geom_polygon()  +
+    scale_fill_scico(palette = 'batlow',
+                     na.value = "transparent",
+                     direction = 1,
+                     name = "Wind Speed (km/h)",
+                     limits = c(0,150),
+                     guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top")
+                     ) +
+    xlim(c(115.5, 128.0)) +
+    ylim(c(4, 22.0)) +
+    coord_equal(expand = 0) +
+    theme(
+        legend.position = c(0.75, 0.9),
+        panel.background = element_rect(fill = "#EAF7FA"),
+        panel.border = element_rect(colour = "black", fill = "transparent"),
+        legend.background = element_rect(fill = "white")
+    )
+
+ggsave(file= "Figures/municipalities_with_windspeed_map.png", 
+      scale = 2.0,
+      width = 3, height = 4.5,
+      dpi = 300)
+```
+
+\ 
+
+----
+
+Wind velocity data can also be downloaded in the [NOAA/NCEP website](https://pae-paha.pacioos.hawaii.edu/erddap/griddap/ncep_global.graph?ugrd10m[(2020-11-01T00:00:00Z)][(1.5):(26.0)][(109.5):(134.0)],vgrd10m[(2020-11-01T00:00:00Z)][(1.5):(26.0)][(109.5):(134.0)]&.draw=vectors&.vars=longitude%7Clatitude%7Cugrd10m%7Cvgrd10m&.color=0x000000&.bgColor=0xffccccff) for the GFS model.
