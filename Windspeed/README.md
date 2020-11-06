@@ -4,13 +4,16 @@ To create a damage model for this typhoon event, we need wind speed values for a
 
 This code needs a shapefile `PH_municipality.shp` in the folder `/Data/`. This shapefile contains the polygons of all municipalities with associated attributes.
 
+# View documentation:
+Open the html file to view the documentation.
+
 # View results:
 1. Get the windspeed outputs as csv files from /Output_CSV. You can either get the mean or maximum windspeed for each municipality.
   * Municipalities_with_Windspeed_Mean.csv
   * Municipalities_with_Windspeed_Max.csv
 
 # How to use RMarkdown file:
-View the documentation with the html file. Feel free to edit the Rmarkdown file using the following guide.
+Feel free to edit the Rmarkdown file using the following guide.
 
 1. Place the .RProj file to where you want your home folder to be set.
 2. This file needs PH_municipality.shp located in /Data
