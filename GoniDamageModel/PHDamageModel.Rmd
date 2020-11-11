@@ -325,7 +325,7 @@ td_step <- stepAIC(td_full)
 summary(td_step)
 ```
 
-The correlation with the predictors seem as expected. Hicher windspeeds give raise to higher damage, the same as municipalities with higher average slope where wind effects can be more severe. On the other hand, the distance to the typhoon's first impact in land, the percentage of houses with strong roof and municipalities with more experience from past typhoons yield a lesser damage. The negative correlation with population density might be discriminating between municipalities with more dense urban land use and more rural ones, where it is expected to find a lower proportion of damage (although a larger absolute amount of damage). The reason for the sign of the correlation with elevation is not yet clear.
+The correlation with the predictors seem as expected. Higher windspeeds give raise to higher damage, the same as municipalities with higher average slope where wind effects can be more severe. On the other hand, the distance to the typhoon's first impact in land, the percentage of houses with strong roof and municipalities with more experience from past typhoons yield a lesser damage. The negative correlation with population density might be discriminating between municipalities with more dense urban land use and more rural ones, where it is expected to find a lower proportion of damage (although a larger absolute amount of damage). The reason for the sign of the correlation with elevation is not yet clear.
 
 ```{r results='hide', warning=FALSE}
 
@@ -515,7 +515,7 @@ colMeans(cv_td[, c("RMSE", "MAPE")])
 cv_td
 ```
 
-The total damage model has a significantly higher cross-validation error. In both cases, a large portion of the error seems to be driven by a couple of events that well above the mean error.
+The total damage model has a significantly higher cross-validation error. In both cases, a large portion of the error seems to be driven by a couple of events that lead to errors which are much larger than the average. Note that by treating each typhoon as a test set, we interpret the Experience variable as a static, long-run frequency of experiencing typhoons instead of the way it is actually calculated: as a dynamic variable which accumulates for each municipality over the timeframe of the data (2012-2016). An alternative cross-validation method would be to only use past typhoons to predict for later ones.
 
 #### Residual analysis
 
@@ -641,7 +641,7 @@ head(new_data)
 The predicted values are saved back in the csv.
 ```{r}
 # Write new dataset in csv
-write.csv(new_data, 'data\\All_Goni_pred.csv', row.names=F)
+# write.csv(new_data, 'data\\All_Goni_pred.csv', row.names=F)
 ```
 
 # Read and plot shapefile
@@ -744,7 +744,8 @@ ggplot() + theme(
                                 colour = "white")
   ) +
   geom_sf(data = ph_mun_new, aes(fill=tdprop), size = 0.1, color = "black") + 
-  scale_fill_gradient(low="white", high="red") + 
+  scale_fill_fermenter(breaks = c(0,0.2,0.4,0.6,0.8,1), type = "seq", palette = 7, direction=1,
+                       na.value='grey50') + 
   geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
   coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Damage rate", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
   theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
@@ -779,7 +780,8 @@ ggplot() + theme(
                                 colour = "white")
   ) +
   geom_sf(data = ph_mun_new, aes(fill=tdnum), size = 0.1, color = "black") + 
-  scale_fill_gradient(low="white", high="red") + 
+  scale_fill_fermenter(breaks = c(0,0.2,0.4,0.6,0.8)*10000, type = "seq", palette = 7, direction=1,
+                       na.value='grey50') + 
   geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
   coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "# Damaged buildings", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
   theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
@@ -798,7 +800,8 @@ ggplot() + theme(
                                 colour = "white")
   ) +
   geom_sf(data = ph_mun_new, aes(fill=pcprop), size = 0.1, color = "black") + 
-  scale_fill_gradient(low="white", high="red") + 
+  scale_fill_fermenter(breaks = c(0,0.2,0.4,0.6,0.8,1)*0.1, type = "seq", palette = 7, direction=1,
+                       na.value='grey50') +
   geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
   coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Complete damage rate", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
   theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
