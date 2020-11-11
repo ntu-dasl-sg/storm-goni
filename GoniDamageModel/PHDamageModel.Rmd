@@ -865,7 +865,7 @@ plotKML(spdf, 'goni_damage', colour = "Damage_rate", plot.labpt = TRUE, shape = 
 
 ### Conclusions
 
-Models were trained from past thypoon damage data both for proportion of damaged houses and proportion of completely damaged houses. In both cases, a similar set of covariates were found to be important for predicting damage: Wind speed (arguely the most relevant), distance to first impact of typhoon in land, proportion of strong roof houses, average slope, experience in past typhoons and mean elevation of the municipality. 
+Models were trained from past typhoon damage data both for proportion of damaged houses and proportion of completely damaged houses. In both cases, a similar set of covariates were found to be important for predicting damage: Wind speed (arguely the most relevant), distance to first impact of typhoon in land, proportion of strong roof houses, average slope, experience in past typhoons and mean elevation of the municipality. 
 
 Damage was predicted for the latest Goni Storm based on remotely obtained wind speed data (see other DASL report) and the observed typhoon trace. Proportion and total number of damaged houses per municipality was predicted using the calibrated models. The province of Catanduane seems to be the worst hitted by the typhoon in coincidence with the largest observed wind speeds. 
 
