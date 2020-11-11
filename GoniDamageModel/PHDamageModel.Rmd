@@ -515,7 +515,7 @@ colMeans(cv_td[, c("RMSE", "MAPE")])
 cv_td
 ```
 
-The total damage model has a significantly higher cross-validation error. In both cases, a large portion of the error seems to be driven by a couple of events that lead to errors which are much larger than the average. Note that by treating each typhoon as a test set, we interpret the Experience variable as a static, long-run frequency of experiencing typhoons instead of the way it is actually calculated: as a dynamic variable which accumulates for each municipality over the timeframe of the data (2012-2016). An alternative cross-validation method would be to only use past typhoons to predict for later ones.
+The total damage model has a significantly higher cross-validation error. In both cases, a large portion of the error seems to be driven by a couple of events that lead to errors which are much larger than the average. Note that by treating each typhoon as a test set, we interpret the Experience variable as a static, long-run frequency of experiencing typhoons instead of the way it is actually calculated: as a dynamic variable which accumulates for each municipality over the timeframe of the data (2012-2016). An alternative cross-validation method would be to only use past typhoons to predict for later ones. 
 
 #### Residual analysis
 
@@ -861,7 +861,13 @@ colnames(spdf@data) <- c("Municipality", "Damage_rate", "Damage_rate_standard_er
 spdf@data$Municipality <- as.character(spdf@data$Municipality)
 # Replace pattern in string:
 spdf@data$Municipality[spdf@data$Municipality == "GABALDON (BITULOK & SABANI)"] <- "GABALDON (BITULOK AND SABANI)"
+
 shape = "http://maps.google.com/mapfiles/kml/pal2/icon18.png"
+
+# Round variables
+
+spdf@data$
+
 
 plotKML(spdf, 'goni_damage', colour = "Damage_rate", plot.labpt = TRUE, shape = shape, alpha = 0.75, size = 0.2, balloon = TRUE)
 ```
