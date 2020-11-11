@@ -21,7 +21,7 @@ All_Goni_pred.csv in the data folder contains the damage predictions per municip
 - Completely.damaged..rel..se: Standard error of the estimated number of completely damaged houses
 - Completely.damaged..abs..se: Standard error of the estimated number of completely damaged houses
 
-In the graphics folder, maps of the estimated damage rate and number of damaged houses are provided. 
+In the graphics folder, maps of the estimated damage rate and number of damaged houses are provided as well as a KML file for visualisation on Google Earth.
 
 ## Model limitations (Please Read!)
 
