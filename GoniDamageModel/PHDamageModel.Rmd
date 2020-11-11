@@ -641,10 +641,11 @@ head(new_data)
 The predicted values are saved back in the csv.
 ```{r}
 # Write new dataset in csv
-# write.csv(new_data, 'data\\All_Goni_pred.csv', row.names=F)
+write.csv(new_data, 'data\\All_Goni_pred.csv', row.names=F)
 ```
 
 # Read and plot shapefile
+
 ```{r}
 library(rgdal)
 library(sf)
@@ -658,15 +659,21 @@ goni_trace = st_read('data\\Shapefiles\\goni-path.shp')
 ph_mun_new = ph_mun
 
 tdprop.list = replicate(length(ph_mun$Mun_Code),NA)
-tdnum.list = replicate(length(ph_mun$Mun_Code),0)
-pcprop.list = replicate(length(ph_mun$Mun_Code),0)
-pcnum.list = replicate(length(ph_mun$Mun_Code),0)
-tdprop.se.list = replicate(length(ph_mun$Mun_Code),0)
-tdnum.se.list = replicate(length(ph_mun$Mun_Code),0)
-pcprop.se.list = replicate(length(ph_mun$Mun_Code),0)
-pcnum.se.list = replicate(length(ph_mun$Mun_Code),0)
-windspeed.list = replicate(length(ph_mun$Mun_Code),0)
-dist_first_impact.list = replicate(length(ph_mun$Mun_Code),0)
+tdnum.list = replicate(length(ph_mun$Mun_Code),NA)
+pcprop.list = replicate(length(ph_mun$Mun_Code),NA)
+pcnum.list = replicate(length(ph_mun$Mun_Code),NA)
+tdprop.se.list = replicate(length(ph_mun$Mun_Code),NA)
+tdnum.se.list = replicate(length(ph_mun$Mun_Code),NA)
+pcprop.se.list = replicate(length(ph_mun$Mun_Code),NA)
+pcnum.se.list = replicate(length(ph_mun$Mun_Code),NA)
+windspeed.list = replicate(length(ph_mun$Mun_Code),NA)
+dist_first_impact.list = replicate(length(ph_mun$Mun_Code),NA)
+Slope.list  = replicate(length(ph_mun$Mun_Code),NA)
+Elevation.list  = replicate(length(ph_mun$Mun_Code),NA)
+Population.density.list  = replicate(length(ph_mun$Mun_Code),NA)
+X..strong.roof.type.list = replicate(length(ph_mun$Mun_Code),NA)
+Experience.list  = replicate(length(ph_mun$Mun_Code),NA)
+
 for (i in 1:length(new_data$pcode)){
   pcode = new_data$pcode[i]
   windspeed = new_data$Wind.speed[i]
@@ -679,6 +686,13 @@ for (i in 1:length(new_data$pcode)){
   tdnum.se = new_data$Total.damaged.houses..abs..se[i]
   pcprop.se = new_data$Completely.damaged..rel..se[i]
   pcnum.se = new_data$Completely.damaged..abs..se[i]
+  Slope  = new_data$Slope[i]
+  Elevation  = new_data$Elevation[i]
+  Population.density  = new_data$Population.density[i]
+  X..strong.roof.type = new_data$X..strong.roof.type[i]
+  Experience  = new_data$Experience[i]
+
+  
   # Look for pcode in shapefile attributes
   index = which(ph_mun$Mun_Code == as.character(pcode))
   tdprop.list[index] = tdprop
@@ -691,7 +705,11 @@ for (i in 1:length(new_data$pcode)){
   tdnum.se.list[index] = tdnum.se
   pcprop.se.list[index] = pcprop.se
   pcnum.se.list[index] = pcnum.se
-  
+  Slope.list[index]  = Slope
+  Elevation.list[index]  = Elevation
+  Population.density.list[index]  = Population.density
+  X..strong.roof.type.list[index] = X..strong.roof.type
+  Experience.list[index]  = Experience
 }
 # Save new fields in output shapefile
 ph_mun_new$Wind_Speed = windspeed.list
@@ -704,6 +722,11 @@ ph_mun_new$tdprop.se = tdprop.se.list
 ph_mun_new$tdnum.se = tdnum.se.list
 ph_mun_new$pcprop.se = pcprop.se.list
 ph_mun_new$pcnum.se = pcnum.se.list
+ph_mun_new$Slope = Slope.list 
+ph_mun_new$Elevation = Elevation.list 
+ph_mun_new$Population.density = Population.density.list 
+ph_mun_new$X..strong.roof.type = X..strong.roof.type.list 
+ph_mun_new$Experience = Experience.list 
 
 # st_write(ph_mun_new, 'data\\Shapefiles\\PH_municipality_results.shp')
 ```
@@ -726,6 +749,7 @@ ggplot() + theme(
   coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Damage rate", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
   theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
 
+ggsave("graphics/goni-damagerate.png", dpi = 300, height = 6, width = 7.5, units = "in")
 ```
 
 ```{r}
@@ -741,8 +765,26 @@ ggplot() + theme(
   geom_sf(data = ph_mun_new, aes(fill=tdprop.se), size = 0.1, color = "black") + 
   scale_fill_gradient(low="white", high="red") + 
   geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
-  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Damage rate \n standard errors", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
+  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Damage rate \n standard error", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
   theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
+```
+```{r}
+
+# Plot tdnum
+ggplot() + theme(
+  panel.background = element_rect(fill = "lightblue",
+                                colour = "lightblue",
+                                size = 0.5, linetype = "solid"),
+  panel.grid.major = element_line(size = 0.2, linetype = 'dashed',
+                                colour = "white")
+  ) +
+  geom_sf(data = ph_mun_new, aes(fill=tdnum), size = 0.1, color = "black") + 
+  scale_fill_gradient(low="white", high="red") + 
+  geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
+  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "# Damaged buildings", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
+  theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
+
+ggsave("graphics/goni-damagedbuildings.png", dpi = 300, height = 6, width = 10, units = "in")
 ```
 
 ```{r}
@@ -776,10 +818,49 @@ ggplot() + theme(
   geom_sf(data = ph_mun_new, aes(fill=pcprop.se), size = 0.1, color = "black") + 
   scale_fill_gradient(low="white", high="red") + 
   geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
-  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Complete damage rate \n standard errors", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
+  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Complete damage rate \n standard error", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
   theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
 
+```
 
+The top 10 municipalities hit, in terms of damage rate, are:
+
+```{r}
+
+top10.dr <- sort(ph_mun_new$tdprop, decreasing = TRUE)[1:10]
+
+top10.dr.df <- data.frame(ph_mun_new[ph_mun_new$tdprop %in% top10.dr, c("Mun_Name", "tdprop")])
+
+top10.dr.df <- top10.dr.df[order(top10.dr.df$tdprop, decreasing = TRUE), ]
+
+top10.dr.df[, c("Mun_Name", "tdprop")]
+```
+
+The top 10 municipalities hit, in terms of number of damaged buildings, are:
+
+```{r}
+
+top10.db <- sort(ph_mun_new$tdnum, decreasing = TRUE)[1:10]
+
+top10.db.df <- data.frame(ph_mun_new[ph_mun_new$tdnum %in% top10.db, c("Mun_Name", "tdnum")])
+
+top10.db.df <- top10.db.df[order(top10.db.df$tdnum, decreasing = TRUE), ]
+
+top10.db.df[, c("Mun_Name", "tdnum")]
+```
+
+Finally, we provide a KMZ file of the map to enable visualisation via Google Earth:
+
+```{r}
+spdf <- as(ph_mun_new, "Spatial")
+spdf@data <- spdf@data[, c("Mun_Name", "tdprop", "tdprop.se", "tdnum", "tdnum.se", "pcprop", "pcprop.se", "pcnum", "pcnum.se", "Wind_Speed", "dist_first_impact", "Slope", "Elevation", "Population.density", "X..strong.roof.type", "Experience")]
+colnames(spdf@data) <- c("Municipality", "Damage_rate", "Damage_rate_standard_error", "No_of_damaged_buildings", "No_of_damaged_buildings_standard_error", "Complete_damage_rate", "Complete_damage_rate_standard error", "No_of_completely_damaged buildings", "No_of_completely_damaged_buildings_standard_error", "Wind_speed", "Distance_to_first_impact", "Slope", "Elevation", "Population_density", "Proportion_of_strong_roof_type", "Experience")
+spdf@data$Municipality <- as.character(spdf@data$Municipality)
+# Replace pattern in string:
+spdf@data$Municipality[spdf@data$Municipality == "GABALDON (BITULOK & SABANI)"] <- "GABALDON (BITULOK AND SABANI)"
+shape = "http://maps.google.com/mapfiles/kml/pal2/icon18.png"
+
+plotKML(spdf, 'goni_damage', colour = "Damage_rate", plot.labpt = TRUE, shape = shape, alpha = 0.75, size = 0.2, balloon = TRUE)
 ```
 
 ### Conclusions
