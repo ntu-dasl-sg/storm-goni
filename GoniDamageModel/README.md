@@ -33,7 +33,7 @@ Full disclaimer and limitations can be found in the Rmd file. The code is made a
 
 ## Data Source
 
-The model is based on data from 12 past typhoons obtained from the Netherlands Red Cross and wind data from the NOAA/NCEP Global Forecast System (GFS) Atmospheric Model.
+The model is based on data from 12 past typhoons obtained from the (Netherlands Red Cross)[https://dashboard.510.global/#!/impact_database] and wind data from the (NOAA/NCEP Global Forecast System (GFS) Atmospheric Model)[https://www.ncdc.noaa.gov/data-access/model-data/model-datasets/global-forcast-system-gfs].
 
 The municipality level data adopted from Netherlands Red Cross includes the following:
 * Number of damaged houses from past typhoons: Department of Social Welfare and Development (DSWD) and the National Disaster Risk Reduction and Management Council (NDRRMC)
