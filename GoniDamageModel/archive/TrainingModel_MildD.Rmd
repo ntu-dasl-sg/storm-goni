@@ -1,0 +1,604 @@
+---
+title: "Complete and mild damage estimation"
+author: "mbalbi/mnguyen"
+date: "11/3/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+library(car)
+library(MASS)
+library(ggplot2)
+library(rcompanion) # pseudo-R^2.
+```
+
+Check how many estimates exceed that for Proportion of buildings damaged.
+
+# Remove rows/columns with NAs and create column for proportion of damaged which is completely damaged
+
+```{r}
+# Read CSV with complete dataset into R
+# Divide dataset into each region
+raw_data <- read.csv(file="data//All.csv", header=TRUE, sep=",")
+
+# Remove rows with NA in skilled.Agriculture.Forestry.Fishermen (21 rows):
+raw_data <- raw_data[!is.na(raw_data$X..skilled.Agriculture.Forestry.Fishermen), ]
+
+# Remove row with NA in experience.
+raw_data <- raw_data[!is.na(raw_data$Experience), ]
+
+# Remove column for Predicted.damage.class..1.5. (NULL)
+raw_data <- raw_data[, -which(colnames(raw_data) == "Predicted.damage.class..1.5.")]
+
+# Replace >100 Total.damaged.houses..rel.. with 99.99
+raw_data$Total.damaged.houses..rel..[raw_data$Total.damaged.houses..rel..>100] <- 99.99
+
+# Create proportion of damage which is completely damaged:
+raw_data$Prop.Completely.Damaged <- raw_data$Completely.damaged..rel../raw_data$Total.damaged.houses..rel..
+
+# Create proportion of buildings which are damaged:
+raw_data$Prop.Damaged <- raw_data$Total.damaged.houses..rel../100
+
+# Create proportion of buildings which are completely damaged:
+raw_data$Completely.damaged..rel.. <- raw_data$Completely.damaged..rel../100
+
+# Create proportion of buildings which are partly damaged:
+raw_data$Partly.damaged..rel.. <- raw_data$Partly.damaged..rel../100
+
+```
+
+```{r}
+
+# Temporarily remove the Bicol.region:
+raw_data <- raw_data[, -which(colnames(raw_data) == "Bicol.region")]
+
+# # Remove outlier:
+raw_data <- raw_data[-which(raw_data$Wind.speed == max(raw_data$Wind.speed)),]
+
+summary(raw_data)
+
+```
+
+# Get training set ids
+
+```{r}
+# Get training subset
+N <- nrow(raw_data)
+percentage <- 0.8
+Nsample <- floor(N*percentage)
+set.seed(1)
+train <- sample(1:N, Nsample)
+```
+
+
+# Consider variable transformations
+
+```{r}
+
+temp_train <- raw_data[train, ]
+probit_md <- qnorm(temp_train$Partly.damaged..rel..)
+probit_pc <- qnorm(temp_train$Completely.damaged..rel..)
+
+# Wind.speed
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$Wind.speed)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$Wind.speed)
+
+```
+
+```{r}
+
+# Distance.to.typhoon
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$Distance.to.typhoon)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$Distance.to.typhoon)
+
+```
+
+```{r}
+# rainfall
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$rainfall)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$rainfall)
+
+```
+
+```{r}
+# distance_first_impact
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$distance_first_impact)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$distance_first_impact)
+
+```
+
+```{r}
+# Slope
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$Slope)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$Slope)
+
+```
+
+```{r}
+# Elevation
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$Elevation)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$Elevation)
+
+```
+
+```{r}
+# ruggedness_stdev
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$ruggedness_stdev)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$ruggedness_stdev)
+
+```
+
+```{r}
+# Ruggedness
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$Ruggedness)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$Ruggedness)
+
+```
+
+```{r}
+# slope_stdev
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$slope_stdev)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$slope_stdev)
+
+```
+
+```{r}
+# Population.density
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$Population.density)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$Population.density)
+
+```
+
+```{r}
+# Poverty.incidence
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$Poverty.incidence)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$Poverty.incidence)
+
+```
+
+```{r}
+# X..strong.roof.type
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$X..strong.roof.type)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$X..strong.roof.type)
+
+```
+```{r}
+# X..strong.wall.type
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$X..strong.wall.type)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$X..strong.wall.type)
+
+```
+```{r}
+# X..skilled.Agriculture.Forestry.Fishermen
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$X..skilled.Agriculture.Forestry.Fishermen)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$X..skilled.Agriculture.Forestry.Fishermen)
+
+```
+
+```{r}
+#Experience
+boxCox(probit_md - min(probit_md)*1.01 ~ temp_train$Experience)
+boxCox(probit_pc - min(probit_pc)*1.01 ~ temp_train$Experience)
+
+```
+# Square-root and standardize predictors
+
+```{r}
+nums <- which(unlist(lapply(raw_data, is.numeric)))
+# Omit response variables
+responses <- which(colnames(raw_data) %in% c("Completely.damaged..abs..", "Partly.damaged..abs..", "Total.damaged.houses..abs..", "total_damage_houses_0p25weight", "Partly.damaged..rel..", "Completely.damaged..rel..", "Total.damaged.houses..rel..", "total_damage_houses_0p25weight_perc", "ratio_comp_part", "Total...of.houses", "Prop.Completely.Damaged", "Prop.Damaged"))
+nums <- nums[!(nums %in% responses)]
+nums # Check columns to be scaled.
+```
+```{r}
+# Square-root transform:
+raw_data[,nums] <- sqrt(raw_data[,nums])
+
+# Log-transform Wind.speed
+# raw_data$Wind.speed <- log(raw_data$Wind.speed)
+
+```
+
+
+```{r}
+# Standardise data:
+
+# Save to apply to Goni 2020 dataset later
+cols.mean <- colMeans(raw_data[,nums] ) 
+# One NA in experience; 21 NAs in skilled.Agriculture.Forestry.Fishermen. 
+cols.sd <- apply( raw_data[,nums], 2, sd )
+scaled.data <- lapply(raw_data[,nums], scale)
+
+prepped.data <- raw_data
+# Switch out scaled numerical columns (apart from response variables)
+prepped.data[, nums] <- scaled.data 
+# Subset by training id.
+training.data <- prepped.data[train, ]
+test.data <- prepped.data[-train, ]
+
+summary(training.data)
+
+```
+
+```{r}
+# Dataset for Proportion Damaged:
+# Omit Population, Land.Area, Region and prov.
+omit_var <- which(colnames(training.data) %in% c("Population", "land_area", "Region", "prov", "Prop.Completely.Damaged"))
+md_data <- training.data[, -omit_var]
+md_data <- md_data[, c(which(colnames(md_data) == "Partly.damaged..rel.."), 14:(ncol(md_data)-1))]
+head(md_data)
+```
+
+```{r}
+# Dataset for Proportion of Completely Damaged:
+omit_var <- which(colnames(training.data) %in% c("Population", "land_area", "Region", "prov", "Prop.Damaged"))
+pc_data <- training.data[, -omit_var]
+pc_data <- pc_data[, c(which(colnames(pc_data) == "Completely.damaged..rel.."), 14:(ncol(pc_data)-1))]
+head(pc_data)
+```
+
+# Backwards stepwise variable selection
+
+## Check for multicollinearity
+
+```{r}
+# Fit Multi-Logistic Model
+md_full <- glm(Partly.damaged..rel.. ~ ., data= md_data, family = binomial(link="probit"), trace = FALSE)
+
+## Check on variable collinearity
+
+temp_model <- md_full
+temp_vif <- vif(temp_model) # Use a threshold of 10 to remove variables.
+temp_var <- "dummy"
+temp_data <- md_data
+
+while(max(temp_vif)>10){
+  
+  var_remove <- which(temp_vif == max(temp_vif))
+  temp_var <- append(temp_var, names(var_remove))
+  temp_data <- temp_data[, -which(colnames(temp_data) == names(var_remove))]
+  temp_model <- (glm(Partly.damaged..rel.. ~ ., data= temp_data, family = binomial(link="probit"), trace = FALSE))
+  temp_vif <- vif(temp_model) # Use a threshold of 10 to remove variables.
+}
+
+col_to_use <- c(colnames(temp_data), "Completely.damaged..rel..")
+temp_vif
+temp_var
+```
+
+```{r}
+
+# Subset variables based on VIF:
+
+md_data <- md_data[, colnames(md_data) %in% col_to_use]
+pc_data <- pc_data[, colnames(pc_data) %in% col_to_use]
+
+# Remove Slope and slope_stdev.
+
+# Remove Distance.to.typhoon and X..strong.roof.type for pc_data because of strange positive relations.
+
+# pc_data <- pc_data[, !(colnames(pc_data) %in% c("Distance.to.typhoon", "X..strong.roof.type"))]
+
+```
+
+```{r}
+
+# Fit Multi-Logistic Model
+md_full <- glm(Partly.damaged..rel.. ~ ., data= md_data, family = binomial(link="probit"), trace = FALSE)
+
+md_step <- stepAIC(md_full)
+
+md_step
+```
+
+```{r}
+
+# Check the variable significance
+
+summary(md_step)
+
+# nagelkerke(md_step)
+
+```
+
+```{r}
+
+# Fit Multi-Logistic Model
+pc_full <- glm(Completely.damaged..rel.. ~ ., data= pc_data, family = binomial(link="probit"), trace = FALSE)
+pc_step <- stepAIC(pc_full)
+
+pc_step
+
+```
+
+```{r}
+
+# Check the variable significance
+
+summary(pc_step)
+
+# Remove rainfall.
+
+# pc_data_2 <- pc_data[, !(colnames(pc_data) %in% c("rainfall"))]
+# 
+# pc_full_2 <- glm(Prop.Completely.Damaged ~ ., data= pc_data_2, family = binomial(link="probit"), trace = FALSE)
+# 
+# pc_step_2 <- stepAIC(pc_full_2)
+
+```
+
+```{r}
+
+# # Check the variable significance
+# 
+# summary(pc_step_2)
+# 
+# # Remove X..skilled.Agriculture.Forestry.Fishermen.
+# 
+# pc_data_3 <- pc_data[, !(colnames(pc_data) %in% c("rainfall", "X..skilled.Agriculture.Forestry.Fishermen"))]
+# 
+# pc_full_3 <- glm(Prop.Completely.Damaged ~ ., data= pc_data_3, family = binomial(link="probit"), trace = FALSE)
+# 
+# pc_step_3 <- stepAIC(pc_full_3)
+
+```
+
+```{r}
+
+# Check the variable significance
+
+# summary(pc_step_3) 
+# 
+# # Remove ruggedness_stdev.
+# 
+# pc_data_4 <- pc_data[, !(colnames(pc_data) %in% c("rainfall", "X..skilled.Agriculture.Forestry.Fishermen", "ruggedness_stdev"))]
+# 
+# pc_full_4 <- glm(Prop.Completely.Damaged ~ ., data= pc_data_4, family = binomial(link="probit"), trace = FALSE)
+# 
+# pc_step_4 <- stepAIC(pc_full_4)
+
+```
+```{r}
+
+# # Check the variable significance
+# 
+# summary(pc_step_4) 
+# 
+# # Remove X..strong.wall.type.
+# 
+# pc_data_5 <- pc_data[, !(colnames(pc_data) %in% c("rainfall", "X..skilled.Agriculture.Forestry.Fishermen", "ruggedness_stdev", "X..strong.wall.type"))]
+# 
+# pc_full_5 <- glm(Prop.Completely.Damaged ~ ., data= pc_data_5, family = binomial(link="probit"), trace = FALSE)
+# 
+# pc_step_5 <- stepAIC(pc_full_5)
+
+```
+
+```{r}
+
+# Check the variable significance
+
+# summary(pc_step_5) 
+# nagelkerke(pc_step_5)
+
+```
+
+# Training and test error
+
+```{r}
+
+md.train.pred <- predict(md_step, type = "response")
+md.train.res <- md.train.pred - md_data$Partly.damaged..rel..
+md.train.mse <- mean(md.train.res^2)
+md.train.mse
+hist(md.train.res)
+
+plot(qnorm(md.train.pred), qnorm(md_data$Partly.damaged..rel..), asp = 1)
+abline(a = 0, b = 1, add = TRUE)
+
+```
+
+```{r}
+
+plot(md.train.pred, md_data$Partly.damaged..rel.., asp = 1)
+abline(a = 0, b = 1, add = TRUE)
+
+```
+```{r}
+
+md.train.ar <- abs(md.train.res/md_data$Partly.damaged..rel..)
+
+hist(md.train.ar)
+median(md.train.ar)
+
+```
+
+```{r}
+
+md.test.pred <- predict(md_step, newdata = test.data, type = "response")
+md.test.res <- md.test.pred - test.data$Partly.damaged..rel..
+md.test.mse <- mean(md.test.res^2)
+md.test.mse
+hist(md.test.res)
+
+```
+
+```{r}
+
+md.test.ar <- abs(md.test.res/test.data$Partly.damaged..rel..)
+
+hist(md.test.ar)
+median(md.test.ar)
+
+```
+
+```{r}
+
+pc.train.pred <- predict(pc_step, type = "response")
+pc.train.res <- pc.train.pred - pc_data$Completely.damaged..rel..
+pc.train.mse <- mean(pc.train.res^2)
+pc.train.mse
+hist(pc.train.res)
+
+plot(qnorm(pc.train.pred), qnorm(pc_data$Completely.damaged..rel..), asp = 1)
+abline(a = 0, b = 1, add = TRUE)
+
+```
+
+```{r}
+
+pc.train.ar <- abs(pc.train.res/pc_data$Completely.damaged..rel..)
+
+hist(pc.train.ar)
+median(pc.train.ar)
+
+```
+
+
+```{r}
+
+pc.test.pred <- predict(pc_step, newdata = test.data, type = "response")
+pc.test.res <- pc.test.pred - test.data$Completely.damaged..rel..
+pc.test.mse <- mean(pc.test.res^2)
+pc.test.mse
+hist(pc.test.res)
+
+plot(qnorm(pc.test.pred), qnorm(test.data$Completely.damaged..rel..), asp = 1)
+abline(a = 0, b = 1, add = TRUE)
+
+```
+
+```{r}
+
+plot(pc.test.pred, test.data$Completely.damaged..rel.., asp = 1)
+abline(a = 0, b = 1, add = TRUE)
+
+
+```
+```{r}
+
+pc.test.ar <- abs(pc.test.res/test.data$Prop.Damaged)
+
+hist(pc.test.ar)
+median(pc.test.ar)
+
+```
+
+
+# Check sum of partial and complete damage estimates
+
+```{r}
+
+md_actual <- c(md_data$Partly.damaged..rel.., test.data$Partly.damaged..rel..)
+md_pred <- c(md.train.pred, md.test.pred)
+
+pc_actual <- c(pc_data$Completely.damaged..rel.., test.data$Completely.damaged..rel..)
+pc_pred <- c(pc.train.pred, pc.test.pred)
+
+sum_actual <- pc_actual + md_actual
+sum_pred <- pc_pred + md_pred
+
+plot(sum_pred, qnormsum_actual, asp = 1)
+abline(a = 0, b = 1, add = TRUE)
+
+hist(sum_pred)
+```
+
+```{r}
+
+sum((md_pred + pc_pred)>1)/length(pc_pred) # 1.4%.
+
+```
+
+```{r}
+
+hist(md_pred[md_pred<pc_pred])
+
+md_exceed <- rbind(training.data, test.data)[md_pred<pc_pred, ]
+
+hist(md_exceed$Wind.speed)
+
+```
+
+```{r}
+
+hist(md_exceed$distance_first_impact)
+
+```
+
+```{r}
+
+hist(md_exceed$Elevation) # High elevations!
+hist(md_data$Elevation) 
+
+```
+
+```{r}
+
+hist(md_exceed$Ruggedness)
+hist(md_data$Ruggedness) 
+
+```
+
+```{r}
+
+hist(md_exceed$Population.density) # Low population density. 
+hist(md_data$Population.density)
+```
+
+```{r}
+
+hist(md_exceed$X..strong.roof.type) # With strong roofs.
+hist(md_data$X..strong.roof.type)
+```
+
+```{r}
+
+hist(md_exceed$Experience) # With strong roofs.
+hist(md_data$Experience)
+```
+
+```{r}
+
+hist(md_exceed$X..strong.wall.type) 
+hist(md_data$X..strong.wall.type)
+```
+
+Total damage estimate < complete damage estimate in municipalities with high elevation, low population densities with a sizable proportion of buildings with strong roofs. In these cases, the total damage estimates are low (about 0.2 or lower).
+
+# Prediction of values for data acquired from Goni Typhoon
+
+```{r}
+# Read CSV with new dataset
+new_data <- read.csv(file="data//All_muni.csv", header=TRUE, sep=",")
+summary(new_data)
+
+# Get again the list of numeric columns
+nums <- which(unlist(lapply(new_data, is.numeric)))
+col.names=colnames(new_data[,nums])
+a = new_data[,nums]
+
+# Scale numeric columns with the mean and sd calculated for the trained model
+for (i in 1:length(col.names)){
+  scaled.col = t(t((a[,col.names[i]]^0.5 - cols.mean[col.names[i]])/cols.sd[col.names[i]]))
+  a[,col.names[i]] = t( t( scaled.col ) ) # So it is a vector
+}
+
+# Put the columns back into the dataframe
+prepped.newdata <- new_data
+prepped.newdata[, nums] <- a 
+
+# Predict proportion of damaged buildings
+pred.newdata <- predict(md_step, newdata = prepped.newdata, type = "response")
+
+# Add predicted values to data set
+new_data$md.pred = pred.newdata
+
+# Write new dataset in csv
+# write.csv(new_data, 'G:\\My Drive\\Risk_Analytics_for_Society_Lab_Workspace\\6_Projects\\6.21_Typhoons in Philippines\\GoniDamageModel\\data\\All_muni_pred.csv', row.names=F)
+
+```
+
+

@@ -1,0 +1,793 @@
+---
+title: "Building damage model for typhoons in the Philippines"
+author: "Michele Nguyen, Mariano Balbi - DASL"
+date: "11/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+library(car)
+library(MASS)
+library(ggplot2)
+library(tidyr)
+library(purrr)
+```
+
+### Objective
+
+This notebook presents the development of a statistical model for building damage due to typhoons in the Philippines, using data from past 12 typhoons during the last 2 decades. The damage model is constructed to predict the proportion of damaged buildings per municipality, countrywide, using a set of hazard related metrics, such as wind speed, and socio-economic indicators, such as poverty incidence or wall constructions quality, as predictors.
+
+Two damage models are built: the first one to predict the proportion of damaged buildings in a municipality, and the second one for the proportion of completely damaged buildings in a municipality. Both models are chosen to be multivariate logistic for interpretation purposes (the estimated coefficients relate to log-odds) and because the a probit model gives similar performance.
+
+```{r}
+chosen_link <- "logit"
+if(chosen_link == "logit"){link_fn <- logit}
+if(chosen_link == "probit"){link_fn <- qnorm}
+
+include_transform <- TRUE # Set = TRUE if we want to compute cross-validation errors accounting for variable transformation, scaling, VIF and stepAIC.
+```
+
+### The database
+
+The damage model is built based on past observations of building damages due to typhoons in the last decades ([510 Global](https://dashboard.510.global/#!/impact_database)). The dataset has 1,638 observations corresponding to 1,034 countrywide municipalities and impacts from 12 typhoons. It has 34 columns corresponding to data surveyed in the aftermath of the typhoons and other site and socio-economic metrics corresponding to each municipality.
+
+* **Damage metrics**: The damage resulted from the typhoons is measured as the number of buildings that are partially or completely damaged (PD or CD resepectively) per municipality. These metrics are also given as percentage of the total number of buildings per municipality (pPD and pCD respectively). Other columns correspond to different metrics computed from these two basic measurements.
+* **Hazard metrics**: Variables associated to the typhoon event.
+  + Wind speed [km/h]
+  + Rainfall [mm]
+  + Distance to typhoon [km]: Shortest distance from typhoon's trace to the centroid of the municipality.
+  + Distance to first impact [km]: Distance from the point where typhoon touched land to the centroid of the municipality.
+  + Experience [-]: Average number of typhoons withstood by the region where the municipality belongs to, previous to the current typhoon.
+* **Site and Exposure metrics**: Variables related to site topographic characteristics and municipality socio-economic indicators. These only depend on the municipality and not on the typhoon (assuming they are relatively constant in time).
+  + Slope [-]: Average terrain slope in municipality.
+  + Slope std [-]: Standard deviation of terrain slope in municipality.
+  + Ruggedness [-]: Average terrain ruggedness in municipality.
+  + Ruggedness std [-]: Standard deviation terrain ruggedness in municipality.
+  + Population density [hab/km2]
+  + Poverty incidence [-]
+  + Proportion of strong roof type [-]
+  + Proportion of strong wall type [-]
+  + Proportion of skilled agriculture/Forestry/Fishermen [-]
+
+```{r}
+# Read CSV with complete dataset into R
+raw_data <- read.csv(file="data//All.csv", header=TRUE, sep=",")
+summary(raw_data)
+```
+
+The database is preprocessed to remove rows (observations) with empty values, and remove certain columns that are not going to be used in the model training. 
+
+```{r}
+# Remove rows with NA in skilled.Agriculture.Forestry.Fishermen (21 rows):
+raw_data <- raw_data[!is.na(raw_data$X..skilled.Agriculture.Forestry.Fishermen), ]
+
+# Remove row with NA in experience.
+raw_data <- raw_data[!is.na(raw_data$Experience), ]
+
+# Remove unnecessary columns
+raw_data <- raw_data[, -which(colnames(raw_data) %in% c("Completely.damaged..abs..", "Partly.damaged..abs..", "Total.damaged.houses..abs..", "total_damage_houses_0p25weight", "Partly.damaged..rel..", "total_damage_houses_0p25weight_perc", "ratio_comp_part", "Total...of.houses", "Predicted.damage.class..1.5.", "Bicol.region", "Population", "land_area", "Ruggedness","ruggedness_stdev"))]
+```
+
+**Caution**: The variables 'Ruggedness' and 'ruggedness_stdev' that describe the variation rate of slope in the topography, were ruled out in favour of the 'slope' variable. They both have a ver high correlation and thus carry similar information regarding to damage prediction. This decision was taken due to the relative easier interpretation of the slope variable.
+
+Next, we check for and remove outliers. 
+
+```{r, fig.height= 10, fig.width = 10}
+
+raw_data %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+    facet_wrap(~ key, scales = "free") +
+    geom_histogram()
+
+```
+
+```{r}
+
+# Remove outlier:
+raw_data <- raw_data[-which(raw_data$Wind.speed == max(raw_data$Wind.speed)),]
+
+```
+
+```{r}
+sum(raw_data$Total.damaged.houses..abs.. > raw_data$Total...of.houses)
+max(raw_data$Total.damaged.houses..rel..[raw_data$Total.damaged.houses..rel..<100])
+```
+
+Since there are 13 municipalities where the number of total damaged houses exceed the number of houses on the record likely due to different data sources, we set an upper bound of 99.99% on the proportion of damaged houses. This is higher than the maximum observed value which is less than 100%.
+
+```{r}
+# Replace >100 Total.damaged.houses..rel.. with 99.99
+raw_data$Total.damaged.houses..rel..[raw_data$Total.damaged.houses..rel..>100] <- 99.99
+```
+
+Next, we convert the building damage proportions to a scale of 0-1 for modelling.
+
+```{r}
+# Create proportion of buildings which are damaged:
+raw_data$Total.damaged.houses..rel.. <- raw_data$Total.damaged.houses..rel../100
+
+# Create proportion of buildings which are completely damaged:
+raw_data$Completely.damaged..rel.. <- raw_data$Completely.damaged..rel../100
+```
+
+### Data preparation
+
+#### Variable transformation
+
+Each of the potential predictors of damage is tested using the Box-Cox transformation to determine if a transformation of power-law transformation of the variable is necessary to normalise the variables relative to the link-transformed damaged proportions.
+
+```{r}
+
+# Link-transformed damage proportions 
+link_fn_td <- link_fn(raw_data$Total.damaged.houses..rel..)
+link_fn_pc <- link_fn(raw_data$Completely.damaged..rel..)
+
+# Round lambda est to the nearest half integer
+power_est <- function(bC){l.est <- bC$x[bC$y == max(bC$y)]
+                          return(round(l.est/0.5)*0.5)}
+
+# Set up dataframe with first row for td and second row for pc
+var_names <- colnames(raw_data)
+var_names <- var_names[!(var_names %in% c("disaster_type", "disaster_name", "pcode", "Completely.damaged..rel..", "Total.damaged.houses..rel..", "Region", "prov"))]
+power_df <- matrix(NA, nrow = 2, ncol = length(var_names))
+colnames(power_df) <- var_names
+
+for (i in 1:length(var_names)){
+  
+  var_i <- var_names[i]
+  power_df[1, var_i] <- power_est(boxCox(link_fn_td - min(link_fn_td)*1.01 ~ raw_data[, var_i],
+                                         plotit = FALSE))
+  power_df[2, var_i] <- power_est(boxCox(link_fn_pc - min(link_fn_pc)*1.01 ~ raw_data[, var_i],
+                                         plotit = FALSE))
+  
+}
+
+power_df
+
+```
+
+Apply the obtained transformations:
+```{r}
+
+td_data <- raw_data
+pc_data <- raw_data
+
+for (i in 1:length(var_names)){
+      
+    var_i <- var_names[i]
+     if(power_df[1, var_i]==0){ 
+       td_data[, var_i] <- log(td_data[, var_i])
+     }else{td_data[, var_i] <- td_data[, var_i]^power_df[1, var_i]}
+  
+     if(power_df[2, var_i]==0){ 
+       pc_data[, var_i] <- log(pc_data[, var_i])
+     }else{pc_data[, var_i] <- pc_data[, var_i]^power_df[2, var_i]}
+}
+
+```
+
+#### Data scaling
+
+All numeric columns are standardize to have mean 0 and standard deviation 1.
+
+```{r}
+# Standardise data:
+
+# Save to apply to Goni 2020 dataset later
+
+cols.mean.td <- colMeans(td_data[, var_names] ) 
+cols.sd.td <- apply(td_data[, var_names], 2, sd )
+scaled.data.td <- lapply(td_data[, var_names], scale)
+
+cols.mean.pc <- colMeans(td_data[, var_names] ) 
+cols.sd.pc <- apply(td_data[, var_names], 2, sd )
+scaled.data.pc <- lapply(pc_data[, var_names], scale)
+
+# Switch out scaled numerical columns (apart from response variables)
+td_data[, var_names] <- as.data.frame(scaled.data.td)
+pc_data[, var_names] <- as.data.frame(scaled.data.pc)
+
+
+```
+
+#### Exploratory data analysis
+
+In this section, we explore the data to identify possible relations between the predictors and the building damage proportions. 
+
+For the proportion of buildings damaged:
+
+```{r, fig.height= 10, fig.width = 10}
+
+td_data %>%
+  keep(is.numeric) %>% 
+  gather(-Total.damaged.houses..rel.., -Completely.damaged..rel.., key = "var", value = "value") %>% 
+  ggplot(aes(x = value, y = link_fn(Total.damaged.houses..rel..))) +
+    geom_point() +
+    facet_wrap(~ var, scales = "free") +
+    theme_bw()
+
+```
+
+For the proportion of buildings completely damaged:
+
+```{r, fig.height= 10, fig.width = 10}
+
+pc_data %>%
+  keep(is.numeric) %>% 
+  gather(-Total.damaged.houses..rel.., -Completely.damaged..rel.., key = "var", value = "value") %>% 
+  ggplot(aes(x = value, y = link_fn(Completely.damaged..rel..))) +
+    geom_point() +
+    facet_wrap(~ var, scales = "free") +
+    theme_bw()
+
+```
+
+For both models, a distinctive behavior can be seen for the Wind Speed predictor depending on its magnitude. While for lower wind speeds a rather scattered and significant positive slope can be observed, this increment of damage seems to saturate for higher wind speed (e.g. above average). This non-linearity was also explored in the model although without satisfactory results, so no changes were made. Similar trends can be seen for other variables, such as elevation and rainfall, but since wind speed is a major predictor variable, the analysis was constrained to it.
+
+#### Datasets
+
+The dataset for the 1st damage model (Proportion of damage buildings):
+
+```{r}
+# Dataset for Proportion Damaged:
+# Omit Population, Land.Area, Region and prov.
+omit_var_td <- which(colnames(raw_data) %in% c("disaster_type", "disaster_name", "pcode", "Completely.damaged..rel..", "Region", "prov"))
+td_data <- td_data[, -omit_var_td]
+head(td_data)
+```
+
+The dataset for the 2nd damage model (Proportion of completely damage buildings):
+
+```{r}
+# Dataset for Proportion of Completely Damaged:
+omit_var_pc <- which(colnames(raw_data) %in% c("disaster_type", "disaster_name", "pcode", "Total.damaged.houses..rel..", "Region", "prov"))
+pc_data <- pc_data[, -omit_var_pc]
+head(pc_data)
+```
+
+### Model training
+
+#### Check for multicollinearity
+
+Variance Inflation Factors (VIF) are computed to check for multicollinearity. Variables with VIF>10 are removed from consideration.
+
+```{r warning=FALSE}
+# Fit Multi-Logistic Model for td
+td_full <- glm(Total.damaged.houses..rel.. ~ ., data= td_data, family = binomial(link=chosen_link), trace = FALSE)
+
+## Check on variable collinearity
+temp_model <- td_full
+temp_vif <- vif(temp_model) # Use a threshold of 10 to remove variables.
+temp_var <- "dummy"
+temp_data <- td_data
+
+while(max(temp_vif)>10){
+  
+  var_remove <- which(temp_vif == max(temp_vif))
+  temp_var <- append(temp_var, names(var_remove))
+  temp_data <- temp_data[, -which(colnames(temp_data) == names(var_remove))]
+  temp_model <- (glm(Total.damaged.houses..rel.. ~ ., data= temp_data, family = binomial(link=chosen_link), trace = FALSE))
+  temp_vif <- vif(temp_model) # Use a threshold of 10 to remove variables.
+}
+
+td_col_to_use <- colnames(temp_data)
+temp_vif
+temp_var
+```
+
+```{r warning=FALSE}
+# Fit Multi-Logistic Model for pc
+pc_full <- glm(Completely.damaged..rel.. ~ ., data= pc_data, family = binomial(link=chosen_link), trace = FALSE)
+
+## Check on variable collinearity
+temp_model <- pc_full
+temp_vif <- vif(temp_model) # Use a threshold of 10 to remove variables.
+temp_var <- "dummy"
+temp_data <- pc_data
+
+while(max(temp_vif)>10){
+  
+  var_remove <- which(temp_vif == max(temp_vif))
+  temp_var <- append(temp_var, names(var_remove))
+  temp_data <- temp_data[, -which(colnames(temp_data) == names(var_remove))]
+  temp_model <- (glm(Completely.damaged..rel.. ~ ., data= temp_data, family = binomial(link=chosen_link), trace = FALSE))
+  temp_vif <- vif(temp_model) # Use a threshold of 10 to remove variables.
+}
+
+pc_col_to_use <- colnames(temp_data)
+temp_vif
+temp_var
+```
+
+```{r}
+# Subset variables based on VIF:
+td_data <- td_data[, colnames(td_data) %in% td_col_to_use]
+pc_data <- pc_data[, colnames(pc_data) %in% pc_col_to_use]
+
+```
+
+#### Backwards stepwise variable selection
+
+The stepwise variable selection uses AIC to compare between models.
+
+```{r results='hide', warning=FALSE}
+
+# Fit Multi-Logistic Model
+td_full <- glm(Total.damaged.houses..rel.. ~ ., data= td_data, family = binomial(link=chosen_link), trace = FALSE)
+td_step <- stepAIC(td_full)
+```
+```{r}
+# Check the variable significance
+summary(td_step)
+```
+
+The correlation with the predictors seem as expected. Hicher windspeeds give raise to higher damage, the same as municipalities with higher average slope where wind effects can be more severe. On the other hand, the distance to the typhoon's first impact in land, the percentage of houses with strong roof and municipalities with more experience from past typhoons yield a lesser damage. The negative correlation with population density might be discriminating between municipalities with more dense urban land use and more rural ones, where it is expected to find a lower proportion of damage (although a larger absolute amount of damage). The reason for the sign of the correlation with elevation is not yet clear.
+
+```{r results='hide', warning=FALSE}
+
+# Fit Multi-Logistic Model
+pc_full <- glm(Completely.damaged..rel.. ~ ., data= pc_data, family = binomial(link=chosen_link), trace = FALSE)
+pc_step <- stepAIC(pc_full)
+
+```
+
+```{r}
+# Check resulting model
+pc_step
+# Check the variable significance
+summary(pc_step)
+
+```
+
+The variables selected are the same than in the previous model (with less significance in most of the predictors), with the exception that 'slope' does not appear. This might as well be a statistical artifact.
+
+### Model validation
+
+#### Cross-validation errors
+
+To evaluate our fitted models, we perform cross-validation on the model structure with data from each typhoon as test sets. 
+
+```{r}
+typhoons <- unique(raw_data$disaster_name)
+table(raw_data$disaster_name)
+```
+
+```{r, message = FALSE, warning = FALSE}
+cv_pc <- data.frame("Split" = 1:length(typhoons))
+cv_pc$RMSE <- NA
+cv_pc$MAPE <- NA
+
+cv_td <- data.frame("Split" = 1:length(typhoons))
+cv_td$RMSE <- NA
+cv_td$MAPE <- NA
+
+for (i in 1:length(typhoons)){
+  
+ train.i <- which(raw_data$disaster_name != typhoons[i])
+ 
+ if(include_transform){
+   
+   # Link-transformed damage proportions 
+   link_fn_td.i <- link_fn(raw_data[train.i, ]$Total.damaged.houses..rel..)
+   link_fn_pc.i <- link_fn(raw_data[train.i, ]$Completely.damaged..rel..)
+   
+   # Set up dataframe with first row for td and second row for pc
+   power_df.i <- matrix(NA, nrow = 2, ncol = length(var_names))
+   colnames(power_df.i) <- var_names
+   
+   td_data.i <- raw_data
+   pc_data.i <- raw_data
+   
+   td_data.i <- td_data.i[, -omit_var_td]
+   pc_data.i <- pc_data.i[, -omit_var_pc]   
+   
+   for (j in 1:length(var_names)){
+     
+     var_i <- var_names[j]
+     power_df.i[1, var_i] <- power_est(boxCox(link_fn_td.i - min(link_fn_td.i)*1.01 ~ raw_data[train.i, ][, var_i], plotit = FALSE))
+     power_df.i[2, var_i] <- power_est(boxCox(link_fn_pc.i - min(link_fn_pc.i)*1.01 ~ raw_data[train.i, ][, var_i], plotit = FALSE))
+     
+     if(power_df.i[1, var_i]==0){ 
+       td_data.i[, var_i] <- log(td_data.i[, var_i])
+     }else{td_data.i[, var_i] <- td_data.i[, var_i]^power_df.i[1, var_i]}
+     
+     
+     cols.mean.td.i <- mean(td_data.i[train.i, var_i]) 
+     cols.sd.td.i <- sd(td_data.i[train.i, var_i])
+     td_data.i[, var_i] <- (td_data.i[, var_i] - cols.mean.td.i)/cols.sd.td.i
+     
+     if(power_df.i[2, var_i]==0){
+       pc_data.i[, var_i] <- log(pc_data.i[, var_i])
+     }else{pc_data.i[, var_i] <- pc_data.i[, var_i]^power_df.i[2, var_i]}
+     
+     cols.mean.pc.i <- mean(pc_data.i[train.i, var_i]) 
+     cols.sd.pc.i <- sd(pc_data.i[train.i, var_i])
+     pc_data.i[, var_i] <- (pc_data.i[, var_i] - cols.mean.pc.i)/cols.sd.pc.i
+     
+   }
+   
+   # Fit Multi-Logistic Model
+    td_full.i <- glm(Total.damaged.houses..rel.. ~ ., data= td_data.i, family = binomial(link=chosen_link), trace = FALSE)
+
+    ## Check on variable collinearity
+    temp_model <- td_full.i
+    temp_vif <- vif(temp_model) # Use a threshold of 10 to remove variables.
+    temp_var <- "dummy"
+    temp_data <- td_data.i
+
+    while(max(temp_vif)>10){
+  
+     var_remove <- which(temp_vif == max(temp_vif))
+     temp_var <- append(temp_var, names(var_remove))
+     temp_data <- temp_data[, -which(colnames(temp_data) == names(var_remove))]
+     temp_model <- (glm(Total.damaged.houses..rel.. ~ ., data= temp_data, family = binomial(link=chosen_link), trace = FALSE))
+     temp_vif <- vif(temp_model) # Use a threshold of 10 to remove variables.
+    }
+
+   td_col_to_use.i <- colnames(temp_data)
+
+   # Fit Multi-Logistic Model
+   pc_full.i <- glm(Completely.damaged..rel.. ~ ., data= pc_data.i, family = binomial(link=chosen_link), trace = FALSE)
+   
+   ## Check on variable collinearity
+   temp_model <- pc_full.i
+   temp_vif <- vif(temp_model) # Use a threshold of 10 to remove variables.
+   temp_var <- "dummy"
+   temp_data <- pc_data.i
+   
+   while(max(temp_vif)>10){
+     
+     var_remove <- which(temp_vif == max(temp_vif))
+     temp_var <- append(temp_var, names(var_remove))
+     temp_data <- temp_data[, -which(colnames(temp_data) == names(var_remove))]
+     temp_model <- (glm(Completely.damaged..rel.. ~ ., data= temp_data, family = binomial(link=chosen_link), trace = FALSE))
+     temp_vif <- vif(temp_model) # Use a threshold of 10 to remove variables.
+   }
+   
+   pc_col_to_use.i <- colnames(temp_data)
+
+   td_data.i <- td_data.i[, colnames(td_data.i) %in% td_col_to_use.i]
+   pc_data.i <- pc_data.i[, colnames(pc_data.i) %in% pc_col_to_use.i]
+   
+   td.training.data.i <- td_data.i[train.i, ]
+   td.test.data.i <- td_data.i[-train.i, ]
+   
+   pc.training.data.i <- pc_data.i[train.i, ]
+   pc.test.data.i <- pc_data.i[-train.i, ]
+   
+   pc_full.i <- glm(Completely.damaged..rel.. ~ ., data= pc.training.data.i, family = binomial(link=chosen_link), trace = FALSE)
+
+   pc_model.i <-  stepAIC(pc_full.i, trace = 0)
+
+   td_full.i <- glm(Total.damaged.houses..rel.. ~ ., data= td.training.data.i, family = binomial(link=chosen_link), trace = FALSE)
+
+   td_model.i <-  stepAIC(td_full.i, trace = 0)
+   
+   }else{
+
+   pc.training.data.i <- pc_data[train.i, ]
+   pc.test.data.i <- pc_data[-train.i, ]
+     
+   pc_model <- pc_step$formula
+   pc_model.i <- glm(pc_model, data= pc.training.data.i, family = binomial(link=chosen_link), trace = FALSE)
+  
+   td.training.data.i <- td_data[train.i, ]
+   td.test.data.i <- td_data[-train.i, ]
+   
+   td_model <- td_step$formula
+   td_model.i <- glm(td_model, data= td.training.data.i, family = binomial(link=chosen_link), trace = FALSE)
+ 
+ }
+ 
+ pc.test.pred.i <- predict(pc_model.i, newdata = pc.test.data.i, type = "response")
+ pc.test.res.i <- pc.test.pred.i - pc.test.data.i$Completely.damaged..rel..
+ pc.test.rmse.i <- sqrt(mean(pc.test.res.i^2))
+ pc.test.mape.i <- mean(abs(pc.test.res.i/pc.test.data.i$Completely.damaged..rel..))
+ cv_pc[i, c("RMSE", "MAPE")] <- c(pc.test.rmse.i, pc.test.mape.i)
+
+ td.test.pred.i <- predict(td_model.i, newdata = td.test.data.i, type = "response")
+  
+ # If the estimate of buildings damaged is less than the estimate of buildings completely damaged, set it to the latter.
+ td.test.pred.i[td.test.pred.i<pc.test.pred.i] <- pc.test.pred.i
+ td.test.res.i <- td.test.pred.i - td.test.data.i$Total.damaged.houses..rel..
+ td.test.rmse.i <- sqrt(mean(td.test.res.i^2))
+ td.test.mape.i <- mean(abs(td.test.res.i/td.test.data.i$Total.damaged.houses..rel..))
+ cv_td[i, c("RMSE", "MAPE")] <- c(td.test.rmse.i, td.test.mape.i)
+
+}
+
+colMeans(cv_pc[, c("RMSE", "MAPE")])
+```
+
+
+```{r}
+cv_pc
+```
+
+```{r}
+colMeans(cv_td[, c("RMSE", "MAPE")])
+```
+```{r}
+cv_td
+```
+
+The total damage model has a significantly higher cross-validation error. In both cases, a large portion of the error seems to be driven by a couple of events that well above the mean error.
+
+#### Residual analysis
+
+Next, we check if the model residuals are symmetrically distributed about zero and if the model has any bias in terms of over or under-prediction.
+
+```{r}
+pc.pred <- predict(pc_step, type = "response")
+pc.res <- pc.pred - pc_data$Completely.damaged..rel..
+ 
+hist(pc.res)
+
+plot(link_fn(pc_data$Completely.damaged..rel..), link_fn(pc.pred), asp = 1)
+abline(a = 0, b = 1, add = TRUE)
+```
+
+```{r}
+td.pred <- predict(td_step, type = "response")
+# If the estimate of buildings damaged is less than the estimate of buildings completely damaged, set it to the latter.
+td.pred[td.pred<pc.pred] <- pc.pred
+ 
+td.res <- td.pred - td_data$Total.damaged.houses..rel..
+
+hist(td.res)
+
+plot(link_fn(td_data$Total.damaged.houses..rel..), link_fn(td.pred), asp = 1)
+abline(a = 0, b = 1, add = TRUE)
+```
+
+In both cases, the models seems to overpredict damage for low damages. This is important to take into account when evaluating the predictions done with this model. Further analysis to correct this bias can be explored, such us non-linearity in some of the predictors (e.g. wind speed), and eventually update the model.
+
+### Prediction for Goni Typhoon
+
+A new dataset is prepared for the new Goni Typhoon. The same columns from the original dataset are used, but only one row per municipality is left. The columns corresponding to **Wind speed**, **Distance to typhoon** and **Distance to first impact** are completed based on recently acquired information (see other reports from DASL).
+
+```{r}
+# Read CSV with new dataset
+new_data <- read.csv(file="data//All_Goni_pred.csv", header=TRUE, sep=",")
+
+# Choose which wind speed data to use
+new_data$Wind.speed <- new_data$Wind.speed.max
+# new_data$Wind.speed <- new_data$Wind.speed.mean
+
+# Set a minimum distance from typhoon and distance from first impact
+min_dist <- 0.01*min(new_data$distance_first_impact[new_data$distance_first_impact>0], new_data$Distance.to.typhoon[new_data$Distance.to.typhoon>0])
+new_data$distance_first_impact[new_data$distance_first_impact==0] <- min_dist
+new_data$Distance.to.typhoon[new_data$Distance.to.typhoon==0] <- min_dist
+
+head(new_data)
+
+```
+
+#### Data transformation and scaling
+
+The variables are power-transformed to be able to be used as predictors in the models calibrated previously. Then, the data is scaled using the mean and standard deviation for each covariate from the training set from the model calibration.
+
+```{r}
+
+new_td_data <- new_data
+new_pc_data <- new_data
+
+for (i in 1:length(var_names)){
+
+  if(power_df[1, var_names[i]]==0){
+    new_td_data[, var_names[i]] <- (log(new_td_data[, var_names[i]]) - cols.mean.td[i])/cols.sd.td[i]
+  }else{
+    new_td_data[, var_names[i]] <- ((new_td_data[, var_names[i]]^power_df[1, var_names[i]]) - cols.mean.td[i])/cols.sd.td[i]
+  }
+  
+  if(power_df[2, var_names[i]]==0){
+    new_pc_data[, var_names[i]] <- (log(new_pc_data[, var_names[i]]) - cols.mean.pc[i])/cols.sd.pc[i]
+  }else{
+    new_pc_data[, var_names[i]] <- (new_pc_data[, var_names[i]]^power_df[2, var_names[i]] - cols.mean.pc[i])/cols.sd.pc[i]
+  }
+  
+}
+
+```
+
+#### Computed predictions for the 1st model: Total proportion of damaged buildings
+
+The model calibrated makes use of wind speed, distance to first impact, elevation, slope, strong roof type type and experience as predictors of damage.
+
+```{r}
+td_step
+```
+
+
+```{r}
+# Predict proportion of all damaged buildings and standard errors
+pred.td_prop_bldgs = predict(td_step, newdata = new_td_data, type = "response", se.fit = TRUE)
+# Predict number of all damaged buildings
+pred.td_num_bldgs = pred.td_prop_bldgs$fit * new_data$Total...of.houses
+# Add predicted values and standard errors to data set
+new_data$Total.damaged.houses..rel.. = pred.td_prop_bldgs$fit
+new_data$Total.damaged.houses..abs.. = pred.td_num_bldgs
+new_data$Total.damaged.houses..rel..se = pred.td_prop_bldgs$se.fit
+new_data$Total.damaged.houses..abs..se = pred.td_prop_bldgs$se.fit * new_data$Total...of.houses
+```
+
+#### Computed predictions for the 2nd model: Proportion of completely damaged buildings
+
+The model calibrated makes use of wind speed, distance to first impact, elevation, strong roof type type and experience as predictors of damage.
+
+```{r}
+pc_step
+```
+
+```{r}
+# Predict proportion of all damaged buildings
+pred.pc_prop_bldgs = predict(pc_step, newdata =new_pc_data, type = "response", se.fit = TRUE)
+# Predict number of all damaged buildings
+pred.pc_num_bldgs = pred.pc_prop_bldgs$fit * new_data$Total...of.houses
+# Add predicted values and standard errors to data set
+new_data$Completely.damaged..rel.. = pred.pc_prop_bldgs$fit
+new_data$Completely.damaged..abs.. = pred.pc_num_bldgs
+new_data$Completely.damaged..rel..se = pred.pc_prop_bldgs$se.fit
+new_data$Completely.damaged..abs..se = pred.pc_prop_bldgs$se.fit * new_data$Total...of.houses
+
+
+head(new_data)
+```
+
+The predicted values are saved back in the csv.
+```{r}
+# Write new dataset in csv
+# write.csv(new_data, 'data\\All_Goni_pred.csv', row.names=F)
+```
+
+# Read and plot shapefile
+```{r}
+library(rgdal)
+library(sf)
+library(ggplot2)
+dsn <- system.file("vectors", package = "rgdal")
+# Read shapefiles
+ph_mun = st_read('data\\Shapefiles\\PH_municipality.shp')
+goni_trace = st_read('data\\Shapefiles\\goni-path.shp')
+
+# Create new shapefile
+ph_mun_new = ph_mun
+
+tdprop.list = replicate(length(ph_mun$Mun_Code),NA)
+tdnum.list = replicate(length(ph_mun$Mun_Code),0)
+pcprop.list = replicate(length(ph_mun$Mun_Code),0)
+pcnum.list = replicate(length(ph_mun$Mun_Code),0)
+tdprop.se.list = replicate(length(ph_mun$Mun_Code),0)
+tdnum.se.list = replicate(length(ph_mun$Mun_Code),0)
+pcprop.se.list = replicate(length(ph_mun$Mun_Code),0)
+pcnum.se.list = replicate(length(ph_mun$Mun_Code),0)
+windspeed.list = replicate(length(ph_mun$Mun_Code),0)
+dist_first_impact.list = replicate(length(ph_mun$Mun_Code),0)
+for (i in 1:length(new_data$pcode)){
+  pcode = new_data$pcode[i]
+  windspeed = new_data$Wind.speed[i]
+  dist_first_impact = new_data$distance_first_impact[i]
+  tdprop = new_data$Total.damaged.houses..rel..[i]
+  tdnum = new_data$Total.damaged.houses..abs..[i]
+  pcprop = new_data$Completely.damaged..rel..[i]
+  pcnum = new_data$Completely.damaged..abs..[i]
+  tdprop.se = new_data$Total.damaged.houses..rel..se[i]
+  tdnum.se = new_data$Total.damaged.houses..abs..se[i]
+  pcprop.se = new_data$Completely.damaged..rel..se[i]
+  pcnum.se = new_data$Completely.damaged..abs..se[i]
+  # Look for pcode in shapefile attributes
+  index = which(ph_mun$Mun_Code == as.character(pcode))
+  tdprop.list[index] = tdprop
+  tdnum.list[index] = tdnum
+  pcprop.list[index] = pcprop
+  pcnum.list[index] = pcnum
+  windspeed.list[index] = windspeed
+  dist_first_impact.list[index] = dist_first_impact
+  tdprop.se.list[index] = tdprop.se
+  tdnum.se.list[index] = tdnum.se
+  pcprop.se.list[index] = pcprop.se
+  pcnum.se.list[index] = pcnum.se
+  
+}
+# Save new fields in output shapefile
+ph_mun_new$Wind_Speed = windspeed.list
+ph_mun_new$dist_first_impact = dist_first_impact.list
+ph_mun_new$tdprop = tdprop.list
+ph_mun_new$tdnum = tdnum.list
+ph_mun_new$pcprop = pcprop.list
+ph_mun_new$pcnum = pcnum.list
+ph_mun_new$tdprop.se = tdprop.se.list
+ph_mun_new$tdnum.se = tdnum.se.list
+ph_mun_new$pcprop.se = pcprop.se.list
+ph_mun_new$pcnum.se = pcnum.se.list
+
+# st_write(ph_mun_new, 'data\\Shapefiles\\PH_municipality_results.shp')
+```
+
+```{r}
+
+cap.df <- data.frame(x = 126.8, y = 15.75, text = "Developed by the Disaster Analytics for Society Lab (DASL) at the \n Earth Observatory of Singapore and Nanyang Technological University.")
+
+# Plot tdprop
+ggplot() + theme(
+  panel.background = element_rect(fill = "lightblue",
+                                colour = "lightblue",
+                                size = 0.5, linetype = "solid"),
+  panel.grid.major = element_line(size = 0.2, linetype = 'dashed',
+                                colour = "white")
+  ) +
+  geom_sf(data = ph_mun_new, aes(fill=tdprop), size = 0.1, color = "black") + 
+  scale_fill_gradient(low="white", high="red") + 
+  geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
+  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Damage rate", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
+  theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
+
+```
+
+```{r}
+# Plot tdprop standard errors:
+
+ggplot() + theme(
+  panel.background = element_rect(fill = "lightblue",
+                                colour = "lightblue",
+                                size = 0.5, linetype = "solid"),
+  panel.grid.major = element_line(size = 0.2, linetype = 'dashed',
+                                colour = "white")
+  ) +
+  geom_sf(data = ph_mun_new, aes(fill=tdprop.se), size = 0.1, color = "black") + 
+  scale_fill_gradient(low="white", high="red") + 
+  geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
+  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Damage rate \n standard errors", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
+  theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
+```
+
+```{r}
+
+# Plot pcprop
+ggplot() + theme(
+  panel.background = element_rect(fill = "lightblue",
+                                colour = "lightblue",
+                                size = 0.5, linetype = "solid"),
+  panel.grid.major = element_line(size = 0.2, linetype = 'dashed',
+                                colour = "white")
+  ) +
+  geom_sf(data = ph_mun_new, aes(fill=pcprop), size = 0.1, color = "black") + 
+  scale_fill_gradient(low="white", high="red") + 
+  geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
+  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Complete damage rate", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
+  theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
+
+```
+
+```{r}
+
+# Plot pcprop standard errors
+ggplot() + theme(
+  panel.background = element_rect(fill = "lightblue",
+                                colour = "lightblue",
+                                size = 0.5, linetype = "solid"),
+  panel.grid.major = element_line(size = 0.2, linetype = 'dashed',
+                                colour = "white")
+  ) +
+  geom_sf(data = ph_mun_new, aes(fill=pcprop.se), size = 0.1, color = "black") + 
+  scale_fill_gradient(low="white", high="red") + 
+  geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
+  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Complete damage rate \n standard errors", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
+  theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
+
+
+```
+
+### Conclusions
+
+Models were trained from past thypoon damage data both for proportion of damaged houses and proportion of completely damaged houses. In both cases, a similar set of covariates were found to be important for predicting damage: Wind speed (arguely the most relevant), distance to first impact of typhoon in land, proportion of strong roof houses, average slope, experience in past typhoons and mean elevation of the municipality. 
+
+Damage was predicted for the latest Goni Storm based on remotely obtained wind speed data (see other DASL report) and the observed typhoon trace. Proportion and total number of damaged houses per municipality was predicted using the calibrated models. The province of Catanduane seems to be the worst hitted by the typhoon in coincidence with the largest observed wind speeds. 
+
+Caution in the use and evaluation of predictions and thorough review of the model's development and hypothesis is recommended before analyzing the results.
+
+
