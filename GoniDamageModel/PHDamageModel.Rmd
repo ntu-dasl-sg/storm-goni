@@ -325,7 +325,7 @@ td_step <- stepAIC(td_full)
 summary(td_step)
 ```
 
-The correlation with the predictors seem as expected. Hicher windspeeds give raise to higher damage, the same as municipalities with higher average slope where wind effects can be more severe. On the other hand, the distance to the typhoon's first impact in land, the percentage of houses with strong roof and municipalities with more experience from past typhoons yield a lesser damage. The negative correlation with population density might be discriminating between municipalities with more dense urban land use and more rural ones, where it is expected to find a lower proportion of damage (although a larger absolute amount of damage). The reason for the sign of the correlation with elevation is not yet clear.
+The correlation with the predictors seem as expected. Higher windspeeds give raise to higher damage, the same as municipalities with higher average slope where wind effects can be more severe. On the other hand, the distance to the typhoon's first impact in land, the percentage of houses with strong roof and municipalities with more experience from past typhoons yield a lesser damage. The negative correlation with population density might be discriminating between municipalities with more dense urban land use and more rural ones, where it is expected to find a lower proportion of damage (although a larger absolute amount of damage). The reason for the sign of the correlation with elevation is not yet clear.
 
 ```{r results='hide', warning=FALSE}
 
@@ -515,7 +515,7 @@ colMeans(cv_td[, c("RMSE", "MAPE")])
 cv_td
 ```
 
-The total damage model has a significantly higher cross-validation error. In both cases, a large portion of the error seems to be driven by a couple of events that well above the mean error.
+The total damage model has a significantly higher cross-validation error. In both cases, a large portion of the error seems to be driven by a couple of events that lead to errors which are much larger than the average. Note that by treating each typhoon as a test set, we interpret the Experience variable as a static, long-run frequency of experiencing typhoons instead of the way it is actually calculated: as a dynamic variable which accumulates for each municipality over the timeframe of the data (2012-2016). An alternative cross-validation method would be to only use past typhoons to predict for later ones. 
 
 #### Residual analysis
 
@@ -641,7 +641,7 @@ head(new_data)
 The predicted values are saved back in the csv.
 ```{r}
 # Write new dataset in csv
-write.csv(new_data, 'data\\All_Goni_pred.csv', row.names=F)
+# write.csv(new_data, 'data\\All_Goni_pred.csv', row.names=F)
 ```
 
 # Read and plot shapefile
@@ -858,7 +858,13 @@ colnames(spdf@data) <- c("Municipality", "Damage_rate", "Damage_rate_standard_er
 spdf@data$Municipality <- as.character(spdf@data$Municipality)
 # Replace pattern in string:
 spdf@data$Municipality[spdf@data$Municipality == "GABALDON (BITULOK & SABANI)"] <- "GABALDON (BITULOK AND SABANI)"
+
 shape = "http://maps.google.com/mapfiles/kml/pal2/icon18.png"
+
+# Round variables
+
+spdf@data$
+
 
 plotKML(spdf, 'goni_damage', colour = "Damage_rate", plot.labpt = TRUE, shape = shape, alpha = 0.75, size = 0.2, balloon = TRUE)
 ```
