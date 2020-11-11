@@ -1,4 +1,13 @@
-# Typhoon damage model for the Philippines
+# Damage Prediction Model: Philippines, Typhoon Goni
 
-Developed by: DASL
+## Overview
 
+The model developed by the Disaster Analytics for Society lab (DASL) at the Nanyang Technological University, Singapore is a multivariate logit regression with readily available typhoon characteristics (e.g. wind speed, distance to first impact) and socio-economic parameters as predictors ([510 Global](https://dashboard.510.global/#!/impact_database)). The latter include, building quality, population density and experience with past typhoons, which is a metric developed by DASL for the average number of typhoons withstood by the region where the municipality belongs to, previous to the current typhoon. In contrast to the priority index developed by the Netherlands Red Cross which uses data from 4 past typhoons (Haiyan, Melor, Hagupit and Rammasun) and a Random Forest Regressor to predict the number of damaged houses, our model is trained on data from 12 past typhoons (Bopha, Goni 2015, Hagupit, Haima, Haiyan, Kalmaegi, Koppu, Melor, Nock-Ten, Rammasun, Arika and Utor). The training dataset consists of 15 potential predictors and the final model was chosen after tests for multicollinearity and predictive capacity. 
+
+## Limitations
+
+Based on the limited data available for the model, the damage model cannot predict damage from landslides, lahars or coastal surge. It is a statistical model relating wind speed, typhoon energy and simple vulnerability characteristics to the probability of damage based on 12 past typhoons in the Philippines.
+
+It is not an observational estimate and has not been validated against damage observations from Typhoon Goni, and is purely predictive based on data on the typhoon and the municipalities affected. While the predicted values should be taken with caution due to the large expected uncertainty in different sources (e.g. wind speed estimation, data-scarcity in some regions, etc.), they can be interpreted as average order-of-magnitude estimates with the best available data openly available at the moment. Although an objective model selection criteria was used, the model and hence predictions have also been guided by the modeller’s (i.e. DASL) best interpretation of the damaging process and the exploratory data analysis of the available dataset. For that reason, the dataset and the model are made available for the user to test alternative criteria.
+
+Full disclaimer and limitations can be found in GoniDamageModel.Rmd.
