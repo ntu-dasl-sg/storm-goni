@@ -30,3 +30,14 @@ Based on the limited data available for the model, the damage model cannot predi
 It is **not an observational estimate and has not been validated against damage observations from Typhoon Goni**, and is purely predictive based on data on the typhoon and the municipalities affected. While the predicted values should be taken with caution due to the large expected uncertainty in different sources (e.g. wind speed estimation, data-scarcity in some regions, etc.), they can be interpreted as average order-of-magnitude estimates with the best available data openly available at the moment. Although an objective model selection criteria was used, the model and hence predictions have also been guided by the modeller’s (i.e. DASL) best interpretation of the damaging process and the exploratory data analysis of the available dataset. For that reason, the dataset and the model are made available for the user to test alternative criteria.
 
 Full disclaimer and limitations can be found in the Rmd file. The code is made available for further re-use, but we ask that you contact us if you intend to do so.
+
+## Data Source
+
+The model is based on data from 12 past typhoons obtained from the Netherlands Red Cross and wind data from the NOAA/NCEP Global Forecast System (GFS) Atmospheric Model.
+
+The municipality level data adopted from Netherlands Red Cross includes the following:
+* Number of damaged houses from past typhoons: Department of Social Welfare and Development (DSWD) and the National Disaster Risk Reduction and Management Council (NDRRMC)
+* Population: Philippine Statistics Authority; received from UN OCHA (HDX)
+* Poverty: Pantawid Pamilyang Pilipino Program
+* Geographical features (slope and ruggedness): Netherlands Red Cross
+* Building quality (roof and wall materials): Netherlands Red Cross
