@@ -17,9 +17,9 @@ library(purrr)
 
 ### Objective
 
-This notebook presents the development of a statistical model for building damage due to typhoons in the Philippines, using data from past 12 typhoons during the last 2 decades. The damage model is constructed to predict the proportion of damaged buildings per municipality, countrywide, using a set of hazard related metrics, such as wind speed, and socio-economic indicators, such as poverty incidence or wall constructions quality, as predictors.
+This notebook presents the development of a statistical model for building damage due to typhoons in the Philippines, using data from past 12 typhoons during the last 2 decades. The damage model is constructed to predict the proportion of damaged houses per municipality, countrywide, using a set of hazard related metrics, such as wind speed, and socio-economic indicators, such as poverty incidence or wall constructions quality, as predictors.
 
-Two damage models are built: the first one to predict the proportion of damaged buildings in a municipality, and the second one for the proportion of completely damaged buildings in a municipality. Both models are chosen to be multivariate logistic for interpretation purposes (the estimated coefficients relate to log-odds) and because the a probit model gives similar performance.
+Two damage models are built: the first one to predict the proportion of damaged houses in a municipality, and the second one for the proportion of completely damaged houses in a municipality. Both models are chosen to be multivariate logistic for interpretation purposes (the estimated coefficients relate to log-odds) and because the a probit model gives similar performance.
 
 ```{r}
 chosen_link <- "logit"
@@ -33,7 +33,7 @@ include_transform <- TRUE # Set = TRUE if we want to compute cross-validation er
 
 The damage model is built based on past observations of building damages due to typhoons in the last decades ([510 Global](https://dashboard.510.global/#!/impact_database)). The dataset has 1,638 observations corresponding to 1,034 countrywide municipalities and impacts from 12 typhoons. It has 34 columns corresponding to data surveyed in the aftermath of the typhoons and other site and socio-economic metrics corresponding to each municipality.
 
-* **Damage metrics**: The damage resulted from the typhoons is measured as the number of buildings that are partially or completely damaged (PD or CD resepectively) per municipality. These metrics are also given as percentage of the total number of buildings per municipality (pPD and pCD respectively). Other columns correspond to different metrics computed from these two basic measurements.
+* **Damage metrics**: The damage resulted from the typhoons is measured as the number of houses that are partially or completely damaged (PD or CD resepectively) per municipality. These metrics are also given as percentage of the total number of houses per municipality (pPD and pCD respectively). Other columns correspond to different metrics computed from these two basic measurements.
 * **Hazard metrics**: Variables associated to the typhoon event.
   + Wind speed [km/h]
   + Rainfall [mm]
@@ -107,10 +107,10 @@ raw_data$Total.damaged.houses..rel..[raw_data$Total.damaged.houses..rel..>100] <
 Next, we convert the building damage proportions to a scale of 0-1 for modelling.
 
 ```{r}
-# Create proportion of buildings which are damaged:
+# Create proportion of houses which are damaged:
 raw_data$Total.damaged.houses..rel.. <- raw_data$Total.damaged.houses..rel../100
 
-# Create proportion of buildings which are completely damaged:
+# Create proportion of houses which are completely damaged:
 raw_data$Completely.damaged..rel.. <- raw_data$Completely.damaged..rel../100
 ```
 
@@ -198,7 +198,7 @@ pc_data[, var_names] <- as.data.frame(scaled.data.pc)
 
 In this section, we explore the data to identify possible relations between the predictors and the building damage proportions. 
 
-For the proportion of buildings damaged:
+For the proportion of houses damaged:
 
 ```{r, fig.height= 10, fig.width = 10}
 
@@ -212,7 +212,7 @@ td_data %>%
 
 ```
 
-For the proportion of buildings completely damaged:
+For the proportion of houses completely damaged:
 
 ```{r, fig.height= 10, fig.width = 10}
 
@@ -230,7 +230,7 @@ For both models, a distinctive behavior can be seen for the Wind Speed predictor
 
 #### Datasets
 
-The dataset for the 1st damage model (Proportion of damage buildings):
+The dataset for the 1st damage model (Proportion of damage houses):
 
 ```{r}
 # Dataset for Proportion Damaged:
@@ -240,7 +240,7 @@ td_data <- td_data[, -omit_var_td]
 head(td_data)
 ```
 
-The dataset for the 2nd damage model (Proportion of completely damage buildings):
+The dataset for the 2nd damage model (Proportion of completely damage houses):
 
 ```{r}
 # Dataset for Proportion of Completely Damaged:
@@ -491,7 +491,7 @@ for (i in 1:length(typhoons)){
 
  td.test.pred.i <- predict(td_model.i, newdata = td.test.data.i, type = "response")
   
- # If the estimate of buildings damaged is less than the estimate of buildings completely damaged, set it to the latter.
+ # If the estimate of houses damaged is less than the estimate of houses completely damaged, set it to the latter.
  td.test.pred.i[td.test.pred.i<pc.test.pred.i] <- pc.test.pred.i
  td.test.res.i <- td.test.pred.i - td.test.data.i$Total.damaged.houses..rel..
  td.test.rmse.i <- sqrt(mean(td.test.res.i^2))
@@ -533,7 +533,7 @@ abline(a = 0, b = 1, add = TRUE)
 
 ```{r}
 td.pred <- predict(td_step, type = "response")
-# If the estimate of buildings damaged is less than the estimate of buildings completely damaged, set it to the latter.
+# If the estimate of houses damaged is less than the estimate of houses completely damaged, set it to the latter.
 td.pred[td.pred<pc.pred] <- pc.pred
  
 td.res <- td.pred - td_data$Total.damaged.houses..rel..
@@ -594,7 +594,7 @@ for (i in 1:length(var_names)){
 
 ```
 
-#### Computed predictions for the 1st model: Total proportion of damaged buildings
+#### Computed predictions for the 1st model: Total proportion of damaged houses
 
 The model calibrated makes use of wind speed, distance to first impact, elevation, slope, strong roof type type and experience as predictors of damage.
 
@@ -604,9 +604,9 @@ td_step
 
 
 ```{r}
-# Predict proportion of all damaged buildings and standard errors
+# Predict proportion of all damaged houses and standard errors
 pred.td_prop_bldgs = predict(td_step, newdata = new_td_data, type = "response", se.fit = TRUE)
-# Predict number of all damaged buildings
+# Predict number of all damaged houses
 pred.td_num_bldgs = pred.td_prop_bldgs$fit * new_data$Total...of.houses
 # Add predicted values and standard errors to data set
 new_data$Total.damaged.houses..rel.. = pred.td_prop_bldgs$fit
@@ -615,7 +615,7 @@ new_data$Total.damaged.houses..rel..se = pred.td_prop_bldgs$se.fit
 new_data$Total.damaged.houses..abs..se = pred.td_prop_bldgs$se.fit * new_data$Total...of.houses
 ```
 
-#### Computed predictions for the 2nd model: Proportion of completely damaged buildings
+#### Computed predictions for the 2nd model: Proportion of completely damaged houses
 
 The model calibrated makes use of wind speed, distance to first impact, elevation, strong roof type type and experience as predictors of damage.
 
@@ -624,9 +624,9 @@ pc_step
 ```
 
 ```{r}
-# Predict proportion of all damaged buildings
+# Predict proportion of all damaged houses
 pred.pc_prop_bldgs = predict(pc_step, newdata =new_pc_data, type = "response", se.fit = TRUE)
-# Predict number of all damaged buildings
+# Predict number of all damaged houses
 pred.pc_num_bldgs = pred.pc_prop_bldgs$fit * new_data$Total...of.houses
 # Add predicted values and standard errors to data set
 new_data$Completely.damaged..rel.. = pred.pc_prop_bldgs$fit
@@ -751,6 +751,7 @@ ggplot() + theme(
   theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
 
 ggsave("graphics/goni-damagerate.png", dpi = 300, height = 6, width = 7.5, units = "in")
+
 ```
 
 ```{r}
@@ -769,6 +770,7 @@ ggplot() + theme(
   coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Damage rate \n standard error", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
   theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
 ```
+
 ```{r}
 
 # Plot tdnum
@@ -783,10 +785,10 @@ ggplot() + theme(
   scale_fill_fermenter(breaks = c(0,0.2,0.4,0.6,0.8)*10000, type = "seq", palette = 7, direction=1,
                        na.value='grey50') + 
   geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
-  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "# Damaged buildings", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
+  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "# Damaged houses", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
   theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
 
-ggsave("graphics/goni-damagedbuildings.png", dpi = 300, height = 6, width = 10, units = "in")
+ggsave("graphics/goni-damagedhouses.png", dpi = 300, height = 6, width = 10, units = "in")
 ```
 
 ```{r}
@@ -839,7 +841,7 @@ top10.dr.df <- top10.dr.df[order(top10.dr.df$tdprop, decreasing = TRUE), ]
 top10.dr.df[, c("Mun_Name", "tdprop")]
 ```
 
-The top 10 municipalities hit, in terms of number of damaged buildings, are:
+The top 10 municipalities hit, in terms of number of damaged houses, are:
 
 ```{r}
 
@@ -857,7 +859,7 @@ Finally, we provide a KMZ file of the map to enable visualisation via Google Ear
 ```{r}
 spdf <- as(ph_mun_new, "Spatial")
 spdf@data <- spdf@data[, c("Mun_Name", "tdprop", "tdprop.se", "tdnum", "tdnum.se", "pcprop", "pcprop.se", "pcnum", "pcnum.se", "Wind_Speed", "dist_first_impact", "Slope", "Elevation", "Population.density", "X..strong.roof.type", "Experience")]
-colnames(spdf@data) <- c("Municipality", "Damage_rate", "Damage_rate_standard_error", "No_of_damaged_buildings", "No_of_damaged_buildings_standard_error", "Complete_damage_rate", "Complete_damage_rate_standard error", "No_of_completely_damaged buildings", "No_of_completely_damaged_buildings_standard_error", "Wind_speed", "Distance_to_first_impact", "Slope", "Elevation", "Population_density", "Proportion_of_strong_roof_type", "Experience")
+colnames(spdf@data) <- c("Municipality", "Damage_rate", "Damage_rate_standard_error", "No_of_damaged_houses", "No_of_damaged_houses_standard_error", "Complete_damage_rate", "Complete_damage_rate_standard error", "No_of_completely_damaged houses", "No_of_completely_damaged_houses_standard_error", "Wind_speed", "Distance_to_first_impact", "Slope", "Elevation", "Population_density", "Proportion_of_strong_roof_type", "Experience")
 spdf@data$Municipality <- as.character(spdf@data$Municipality)
 # Replace pattern in string:
 spdf@data$Municipality[spdf@data$Municipality == "GABALDON (BITULOK & SABANI)"] <- "GABALDON (BITULOK AND SABANI)"
