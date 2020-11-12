@@ -749,7 +749,7 @@ ggplot() + theme(
   scale_fill_fermenter(breaks = c(0,0.2,0.4,0.6,0.8,1), type = "seq", palette = 7, direction=1,
                        na.value='grey50') + 
   geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
-  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Damage rate", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
+  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Porportion of all \ndamaged houses", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
   theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
 
 ggsave("graphics/goni-damagerate.png", dpi = 300, height = 6, width = 10, units = "in")
@@ -769,7 +769,7 @@ ggplot() + theme(
   geom_sf(data = ph_mun_new, aes(fill=tdprop.se), size = 0.1, color = "black") + 
   scale_fill_gradient(low="white", high="red") + 
   geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
-  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Damage rate \n standard error", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
+  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Porportion of all \ndamaged houses \n standard error", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
   theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
 ```
 
@@ -787,7 +787,7 @@ ggplot() + theme(
   scale_fill_fermenter(breaks = c(0,0.2,0.4,0.6,0.8)*10000, type = "seq", palette = 7, direction=1,
                        na.value='grey50') + 
   geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
-  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "# Damaged houses", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
+  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "# of all damaged houses", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
   theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
 
 ggsave("graphics/goni-damagedhouses.png", dpi = 300, height = 6, width = 10, units = "in")
@@ -804,9 +804,10 @@ ggplot() + theme(
                                 colour = "white")
   ) +
   geom_sf(data = ph_mun_new, aes(fill=pcprop), size = 0.1, color = "black") + 
-   scale_fill_gradient(low="white", high="red")  +
+  scale_fill_fermenter(breaks = c(0,0.2,0.4,0.6,0.8,1)*0.005, type = "seq", palette = 7, direction=1,
+                       na.value='grey50') + 
   geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
-  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Complete damage rate", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
+  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Porportion of completely \ndamaged houses", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
   theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
 
 ```
@@ -824,7 +825,7 @@ ggplot() + theme(
   geom_sf(data = ph_mun_new, aes(fill=pcprop.se), size = 0.1, color = "black") + 
   scale_fill_gradient(low="white", high="red") + 
   geom_sf(data = goni_trace, size = 0.2, color = "red", fill = "cyan1") + 
-  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Complete damage rate \n standard error", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
+  coord_sf(xlim=c(118,127), ylim=c(11,16), expand=F) + labs(fill = "Porportion of completely \ndamaged houses \n standard error", x = "", y = "") + geom_text(data = cap.df, aes(x = x, y = y, label = text), size = 2.5, hjust = 1) +
   theme(legend.position =  c(0.025, 0.15), legend.justification = c(0, 0), legend.title = element_text(size = 7.5), legend.text = element_text(size = 7.5))
 
 ```
